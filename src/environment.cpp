@@ -2,11 +2,34 @@
 // Create simple 3d highway enviroment using PCL
 // for exploring self-driving car sensors
 
+#include <cstdlib>
+
 #include "sensors/lidar.h"
 #include "render/render.h"
 #include "processPointClouds.h"
 // using templates for processPointClouds so also include .cpp to help linker
 #include "processPointClouds.cpp"
+
+namespace {
+
+/**
+ * @brief Generate random colors
+ *
+ * @param count
+ * @return colors
+ */
+std::vector<Color> generateRandomColors(int count) {
+  std::srand(time(nullptr));
+  std::vector<Color> colors;
+  for (int i = 0; i < count; ++i) {
+    colors.emplace_back(float(std::rand()) / RAND_MAX,
+                        float(std::rand()) / RAND_MAX,
+                        float(std::rand()) / RAND_MAX);
+  }
+  return colors;
+}
+
+} // namespace
 
 std::vector<Car> initHighway(bool renderScene, pcl::visualization::PCLVisualizer::Ptr& viewer)
 {
@@ -50,12 +73,31 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr& viewer)
     auto pointCloud = lidar->scan();
 
     ProcessPointClouds<pcl::PointXYZ> processor;
+
     // segmentation
     int maxIterations = 100;
     float distanceThreshold = 0.2;
     auto segmentedCloudPair = processor.SegmentPlane(pointCloud, maxIterations, distanceThreshold);
-    renderPointCloud(viewer, segmentedCloudPair.first, "obstacles cloud", Color(1, 0, 0));
-    renderPointCloud(viewer, segmentedCloudPair.second, "ground cloud", Color(0, 1, 0));
+    auto &obstaclesCloud = segmentedCloudPair.first;
+    auto &groundCloud = segmentedCloudPair.second;
+    // renderPointCloud(viewer, obstaclesCloud, "obstacles cloud", Color(1, 0, 0));
+    renderPointCloud(viewer, groundCloud, "ground cloud", Color(0, 1, 0));
+
+    // clustering
+    float clusterTolerance = 1.0;
+    int clusterMinSize = 3;
+    int clusterMaxSize = 30;
+    auto clusters = processor.Clustering(obstaclesCloud, clusterTolerance,
+                                         clusterMinSize, clusterMaxSize);
+    int clusterId = 0;
+    std::vector<Color> colors = generateRandomColors(clusters.size());
+    for (auto &cluster : clusters) {
+      std::cout << "cluster size ";
+      processor.numPoints(cluster);
+      renderPointCloud(viewer, cluster, "obstCloud" + std::to_string(clusterId),
+                       colors[clusterId]);
+      ++clusterId;
+    }
 }
 
 //setAngle: SWITCH CAMERA ANGLE {XY, TopDown, Side, FPS}
