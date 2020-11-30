@@ -34,6 +34,14 @@ struct Vect3
 		Vect3 result(x+vec.x,y+vec.y,z+vec.z);
 		return result;
 	}
+
+	Vect3 operator*(const Vect3& other)
+	{
+		double x = y * other.z - z * other.y;
+		double y = z * other.x - x * other.z;
+		double z = x * other.y - y * other.x;
+		return {x, y, z};
+	}
 };
 
 enum CameraAngle
