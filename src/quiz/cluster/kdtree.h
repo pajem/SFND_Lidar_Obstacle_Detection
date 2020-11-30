@@ -27,9 +27,7 @@ struct KdTree
 
 	void insert(std::vector<float> point, int id)
 	{
-		// TODO: Fill in this function to insert a new point into the tree
-		// the function should create a new node and place correctly with in the root 
-
+		insertNode(this->root, point, id, 0);
 	}
 
 	// return a list of point ids in the tree that are within distance of target
@@ -38,8 +36,31 @@ struct KdTree
 		std::vector<int> ids;
 		return ids;
 	}
-	
 
+private:
+	/**
+	 * @brief Recursively insert point into kdtree.
+	 *
+	 * @param parent node
+	 * @param value of the point
+	 * @param id of the point
+	 * @param depth of the tree
+	 */
+	void insertNode(Node*& parent, const std::vector<float> value, int id, int depth) {
+		if (parent == nullptr) {
+			// create root node
+			parent = new Node(value, id);
+		} else {
+			int axisIndex = depth % 2; // 2D point
+			if (value[axisIndex] < parent->point[axisIndex]) {
+				// left
+				insertNode(parent->left, value, id, ++depth);
+			} else {
+				// right
+				insertNode(parent->right, value, id, ++depth);
+			}
+		}
+	}
 };
 
 
