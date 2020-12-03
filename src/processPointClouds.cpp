@@ -23,11 +23,38 @@ void ProcessPointClouds<PointT>::numPoints(typename pcl::PointCloud<PointT>::Ptr
 template<typename PointT>
 typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(typename pcl::PointCloud<PointT>::Ptr cloud, float filterRes, Eigen::Vector4f minPoint, Eigen::Vector4f maxPoint)
 {
-
     // Time segmentation process
     auto startTime = std::chrono::steady_clock::now();
 
-    // TODO:: Fill in the function to do voxel grid point reduction and region based filtering
+    // voxel grid filtering
+    pcl::VoxelGrid<PointT> voxelFilter;
+    voxelFilter.setInputCloud(cloud);
+    voxelFilter.setLeafSize(filterRes, filterRes, filterRes);
+    voxelFilter.filter(*cloud);
+
+    // roi filtering
+    pcl::CropBox<PointT> roi;
+    roi.setInputCloud(cloud);
+    roi.setMin(minPoint);
+    roi.setMax(maxPoint);
+    roi.filter(*cloud);
+
+    // filter vehicle body
+    pcl::CropBox<PointT> body(true);
+    body.setInputCloud(cloud);
+    body.setMin(Eigen::Vector4f(-1.5, -1.7, -1, 1));
+    body.setMax(Eigen::Vector4f(2.6, 1.7, -0.4, 1));
+    std::vector<int> bodyPointIndices;
+    body.filter(bodyPointIndices);
+    pcl::PointIndices::Ptr bodyInliers(new pcl::PointIndices());
+    for (auto& bodyPointIndex : bodyPointIndices) {
+        bodyInliers->indices.push_back(bodyPointIndex);
+    }
+    pcl::ExtractIndices<PointT> extract;
+    extract.setInputCloud(cloud);
+    extract.setIndices(bodyInliers);
+    extract.setNegative(true);
+    extract.filter(*cloud);
 
     auto endTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
