@@ -104,12 +104,12 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr& viewer)
 
 void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointClouds<pcl::PointXYZI>& processor, pcl::PointCloud<pcl::PointXYZI>::Ptr inputCloud) {
     // filter
-    Eigen::Vector4f roiMinPoint(-5, -6, -2, 1), roiMaxPoint(40, 6, 10, 1);
-    processor.FilterCloud(inputCloud, 0.1, roiMinPoint, roiMaxPoint);
+    Eigen::Vector4f roiMinPoint(-10, -5, -2, 1), roiMaxPoint(30, 6, 10, 1);
+    processor.FilterCloud(inputCloud, 0.2, roiMinPoint, roiMaxPoint);
 
     // segmentation
-    int maxIterations = 100;
-    float distanceThreshold = 0.2;
+    int maxIterations = 500;
+    float distanceThreshold = 0.3;
     auto segmentedCloudPair = processor.SegmentPlane(inputCloud, maxIterations, distanceThreshold);
     auto &obstaclesCloud = segmentedCloudPair.first;
     auto &groundCloud = segmentedCloudPair.second;
