@@ -108,7 +108,7 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
     processor.FilterCloud(inputCloud, 0.2, roiMinPoint, roiMaxPoint);
 
     // segmentation
-    int maxIterations = 500;
+    int maxIterations = 1000;
     float distanceThreshold = 0.3;
     auto segmentedCloudPair = processor.SegmentPlane(inputCloud, maxIterations, distanceThreshold);
     auto &obstaclesCloud = segmentedCloudPair.first;

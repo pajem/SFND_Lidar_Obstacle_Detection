@@ -1,5 +1,9 @@
 // PCL lib Functions for processing point clouds 
 
+#include <algorithm>
+
+#include "clustering.hpp"
+#include "kdtree.hpp"
 #include "processPointClouds.h"
 #include "segmentation.hpp"
 
@@ -127,7 +131,7 @@ std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT
 }
 
 template<typename PointT>
-std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::Clustering(typename pcl::PointCloud<PointT>::Ptr cloud, float clusterTolerance, int minSize, int maxSize)
+std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::ClusteringPcl(typename pcl::PointCloud<PointT>::Ptr cloud, float clusterTolerance, int minSize, int maxSize)
 {
     // Time clustering process
     auto startTime = std::chrono::steady_clock::now();
@@ -163,6 +167,52 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     return clusters;
 }
 
+template<typename PointT>
+std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::Clustering(typename pcl::PointCloud<PointT>::Ptr cloud, float clusterTolerance, int minSize, int maxSize)
+{
+    // Time clustering process
+    auto startTime = std::chrono::steady_clock::now();
+
+    // use kdtree for search
+    typename sfnd::KdTree<PointT> tree;
+    for (int i = 0; i < cloud->size(); ++i) {
+        tree.insert((*cloud)[i], i); 
+    }
+    // perform euclidean clustering
+    auto indicesClusters = sfnd::euclideanCluster<PointT>(*cloud, tree, clusterTolerance);
+    // remove too small/big cluster
+    indicesClusters.erase(
+        std::remove_if(indicesClusters.begin(), indicesClusters.end(),
+                       [minSize, maxSize](const std::vector<int> &cluster) {
+                         return cluster.size() < minSize ||
+                                cluster.size() > maxSize;
+                       }),
+        indicesClusters.end());
+    // convert to pcl::PointIndices type
+    std::vector<pcl::PointIndices> clusterIndices;
+    for (auto &indicesCluster : indicesClusters) {
+        pcl::PointIndices pclCluster;
+        pclCluster.indices = indicesCluster;
+        clusterIndices.push_back(pclCluster);
+    }
+    // generate point clusters from indices
+    typename pcl::ExtractIndices<PointT> extract;
+    extract.setInputCloud(cloud);
+    extract.setNegative(false);
+    std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
+    for (auto &indices : clusterIndices) {
+        typename pcl::PointCloud<PointT>::Ptr cluster(new pcl::PointCloud<PointT>());
+        extract.setIndices(boost::make_shared<pcl::PointIndices>(indices));
+        extract.filter(*cluster);
+        clusters.push_back(cluster);
+    }
+
+    auto endTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    std::cout << "clustering took " << elapsedTime.count() << " milliseconds and found " << clusters.size() << " clusters" << std::endl;
+
+    return clusters;
+}
 
 template<typename PointT>
 Box ProcessPointClouds<PointT>::BoundingBox(typename pcl::PointCloud<PointT>::Ptr cluster)
