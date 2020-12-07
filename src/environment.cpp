@@ -2,11 +2,34 @@
 // Create simple 3d highway enviroment using PCL
 // for exploring self-driving car sensors
 
+#include <cstdlib>
+
 #include "sensors/lidar.h"
 #include "render/render.h"
 #include "processPointClouds.h"
 // using templates for processPointClouds so also include .cpp to help linker
 #include "processPointClouds.cpp"
+
+namespace {
+
+/**
+ * @brief Generate random colors
+ *
+ * @param count
+ * @return colors
+ */
+std::vector<Color> generateRandomColors(int count) {
+  std::srand(time(nullptr));
+  std::vector<Color> colors;
+  for (int i = 0; i < count; ++i) {
+    colors.emplace_back(float(std::rand()) / RAND_MAX,
+                        float(std::rand()) / RAND_MAX,
+                        float(std::rand()) / RAND_MAX);
+  }
+  return colors;
+}
+
+} // namespace
 
 std::vector<Car> initHighway(bool renderScene, pcl::visualization::PCLVisualizer::Ptr& viewer)
 {
@@ -42,15 +65,75 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr& viewer)
     // ----------------------------------------------------
     
     // RENDER OPTIONS
-    bool renderScene = true;
+    bool renderScene = false;
     std::vector<Car> cars = initHighway(renderScene, viewer);
-    
-    // TODO:: Create lidar sensor 
 
-    // TODO:: Create point processor
-  
+    double groundSlope = 0;
+    auto lidar = std::make_unique<Lidar>(cars, groundSlope);
+    auto pointCloud = lidar->scan();
+
+    ProcessPointClouds<pcl::PointXYZ> processor;
+
+    // segmentation
+    int maxIterations = 100;
+    float distanceThreshold = 0.2;
+    auto segmentedCloudPair = processor.SegmentPlane(pointCloud, maxIterations, distanceThreshold);
+    auto &obstaclesCloud = segmentedCloudPair.first;
+    auto &groundCloud = segmentedCloudPair.second;
+    // renderPointCloud(viewer, obstaclesCloud, "obstacles cloud", Color(1, 0, 0));
+    renderPointCloud(viewer, groundCloud, "ground cloud", Color(0, 1, 0));
+
+    // clustering
+    float clusterTolerance = 1.0;
+    int clusterMinSize = 3;
+    int clusterMaxSize = 30;
+    auto clusters = processor.Clustering(obstaclesCloud, clusterTolerance,
+                                         clusterMinSize, clusterMaxSize);
+    int clusterId = 0;
+    std::vector<Color> colors = generateRandomColors(clusters.size());
+    for (auto &cluster : clusters) {
+      std::cout << "cluster size ";
+      processor.numPoints(cluster);
+      renderPointCloud(viewer, cluster, "obstCloud" + std::to_string(clusterId),
+                       colors[clusterId]);
+      Box box = processor.BoundingBox(cluster);
+      renderBox(viewer, box, clusterId);
+      ++clusterId;
+    }
 }
 
+void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointClouds<pcl::PointXYZI>& processor, pcl::PointCloud<pcl::PointXYZI>::Ptr inputCloud) {
+    // filter
+    Eigen::Vector4f roiMinPoint(-10, -5, -2, 1), roiMaxPoint(30, 6, 10, 1);
+    auto filteredCloud = processor.FilterCloud(inputCloud, 0.2, roiMinPoint, roiMaxPoint);
+
+    // segmentation
+    int maxIterations = 1000;
+    float distanceThreshold = 0.3;
+    auto segmentedCloudPair = processor.SegmentPlane(filteredCloud, maxIterations, distanceThreshold);
+    auto &obstaclesCloud = segmentedCloudPair.first;
+    auto &groundCloud = segmentedCloudPair.second;
+    // renderPointCloud(viewer, obstaclesCloud, "obstacles cloud", Color(1, 0, 0));
+    renderPointCloud(viewer, groundCloud, "ground cloud", Color(0, 1, 0));
+
+    // clustering
+    float clusterTolerance = 0.7;
+    int clusterMinSize = 3;
+    int clusterMaxSize = 100000;
+    auto clusters = processor.Clustering(obstaclesCloud, clusterTolerance,
+                                         clusterMinSize, clusterMaxSize);
+    int clusterId = 0;
+    std::vector<Color> colors = generateRandomColors(clusters.size());
+    for (auto &cluster : clusters) {
+      std::cout << "cluster size ";
+      processor.numPoints(cluster);
+      renderPointCloud(viewer, cluster, "obstCloud" + std::to_string(clusterId),
+                       colors[clusterId]);
+      Box box = processor.BoundingBox(cluster);
+      renderBox(viewer, box, clusterId);
+      ++clusterId;
+    }
+}
 
 //setAngle: SWITCH CAMERA ANGLE {XY, TopDown, Side, FPS}
 void initCamera(CameraAngle setAngle, pcl::visualization::PCLVisualizer::Ptr& viewer)
@@ -83,10 +166,22 @@ int main (int argc, char** argv)
     pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
     CameraAngle setAngle = XY;
     initCamera(setAngle, viewer);
-    simpleHighway(viewer);
 
-    while (!viewer->wasStopped ())
+    ProcessPointClouds<pcl::PointXYZI> processor;
+    std::vector<boost::filesystem::path> pcdFiles = processor.streamPcd("../src/sensors/data/pcd/data_1");
+    auto pcdFileIt = pcdFiles.begin();
+    while (!viewer->wasStopped())
     {
+        viewer->removeAllPointClouds();
+        viewer->removeAllShapes();
+
+        pcl::PointCloud<pcl::PointXYZI>::Ptr inputCloud = processor.loadPcd((*pcdFileIt).string());
+        cityBlock(viewer, processor, inputCloud);
+        ++pcdFileIt;
+        if (pcdFileIt == pcdFiles.end()) {
+            pcdFileIt = pcdFiles.begin();
+        }
+
         viewer->spinOnce ();
     } 
 }
